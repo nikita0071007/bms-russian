@@ -11,6 +11,11 @@ import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.VibrationEffect;
+import android.os.Vibrator;
+import android.speech.tts.TextToSpeech;
+import android.view.WindowManager;
+import java.util.Locale;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
@@ -23,6 +28,8 @@ public class MainActivity extends Activity {
 
     private WebView web;
     private BmsBle ble;
+    private TextToSpeech tts;
+    private boolean ttsReady = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -35,6 +42,17 @@ public class MainActivity extends Activity {
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
         s.setAllowFileAccess(true);
+        s.setMediaPlaybackRequiresUserGesture(false);
+
+        tts = new TextToSpeech(this, new TextToSpeech.OnInitListener() {
+            @Override
+            public void onInit(int status) {
+                if (status == TextToSpeech.SUCCESS) {
+                    tts.setLanguage(new Locale("ru", "RU"));
+                    ttsReady = true;
+                }
+            }
+        });
 
         web.setWebViewClient(new WebViewClient() {
             @Override
@@ -77,6 +95,49 @@ public class MainActivity extends Activity {
             runOnUiThread(new Runnable() {
                 @Override
                 public void run() { ble.stop(); }
+            });
+        }
+
+        @JavascriptInterface
+        public void setTextZoom(final int percent) {
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() { web.getSettings().setTextZoom(percent); }
+            });
+        }
+
+        @JavascriptInterface
+        public void setBrightness(final float v) {
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    WindowManager.LayoutParams lp = getWindow().getAttributes();
+                    lp.screenBrightness = v >= 0.99f
+                            ? WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+                            : Math.max(0.05f, v);
+                    getWindow().setAttributes(lp);
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void speak(final String text) {
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    if (ttsReady) tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "bms");
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void vibrate() {
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    Vibrator vb = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
+                    if (vb != null) vb.vibrate(VibrationEffect.createWaveform(new long[]{0, 400, 200, 400}, -1));
+                }
             });
         }
 
@@ -142,6 +203,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onDestroy() {
         if (ble != null) ble.stop();
+        if (tts != null) tts.shutdown();
         super.onDestroy();
     }
 
